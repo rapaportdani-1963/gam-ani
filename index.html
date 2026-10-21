@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>גם אני איזנקוף</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;700;900&family=Frank+Ruhl+Libre:wght@900&display=swap">
+<style>
+/* Layout: one column phone tool - live square preview on top, big actions below, text edits folded away */
+:root{
+  --bg:#eef2fb; --surface:#ffffff; --fg:#0f1b3d; --muted:#55607d;
+  --accent:#1450e0; --accent-2:#5bb8ff; --line:#d3dbef;
+  --f-display:"Rubik","Arial Hebrew","Segoe UI",Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0b1226; --surface:#141d38; --fg:#e8edfb; --muted:#9aa6c6;
+  --accent:#4f86ff; --accent-2:#7cc7ff; --line:#26335a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0b1226; --surface:#141d38; --fg:#e8edfb; --muted:#9aa6c6;
+  --accent:#4f86ff; --accent-2:#7cc7ff; --line:#26335a; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-display);font-size:16px}
+.wrap{direction:rtl;max-width:540px;margin:0 auto;padding-block:16px 40px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:14px}
+h1{margin:0;font-size:1.35rem;font-weight:900;text-wrap:balance}
+.sub{margin:0;color:var(--muted);font-size:.95rem}
+.stage{position:relative;width:100%;max-width:100%;aspect-ratio:1/1;border-radius:14px;overflow:hidden;
+  box-shadow:0 6px 24px rgba(10,30,90,.18);background:#1450e0}
+canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+canvas:active{cursor:grabbing}
+.hint{font-size:.85rem;color:var(--muted);text-align:center;margin:0}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+  min-height:54px;border-radius:12px;border:0;font:700 1.1rem var(--f-display);cursor:pointer}
+.btn:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:3px solid var(--accent-2);outline-offset:2px}
+.primary{background:var(--accent);color:#fff}
+.secondary{background:var(--surface);color:var(--accent);border:2px solid var(--accent)}
+.row{display:flex;align-items:center;gap:10px}
+.row label{white-space:nowrap;font-weight:500;color:var(--muted)}
+input[type=range]{flex:1;accent-color:var(--accent)}
+details{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px 14px}
+summary{font-weight:700;padding:10px 0;cursor:pointer}
+.fields{display:flex;flex-direction:column;gap:10px;padding-bottom:12px}
+.fields label{font-size:.9rem;color:var(--muted)}
+.fields input[type=text],.fields textarea{width:100%;box-sizing:border-box;font:500 1rem var(--f-display);
+  padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);direction:rtl}
+.ghost{background:transparent;color:var(--muted);border:1px dashed var(--line);min-height:46px;font-size:1rem}
+.msg{min-height:1.3em;margin:0;text-align:center;font-weight:500}
+.fallback{display:flex;flex-direction:column;gap:8px;align-items:center}
+.fallback img{width:100%;border-radius:12px}
+[hidden]{display:none!important}
+#file,#cam{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+</style>
+<style>html,body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <h1>גם אני איזנקוף</h1>
+  <p class="sub">מצלמים, מסדרים את התמונה בתוך העיגול ושומרים.</p>
+
+  <div class="stage"><canvas id="cv" width="1080" height="1080" aria-label="תצוגה מקדימה של התמונה במסגרת"></canvas></div>
+  <p class="hint" id="hint">גוררים באצבע להזזה, צובטים בשתי אצבעות להגדלה.</p>
+
+  <input type="file" id="cam" accept="image/*" capture="user">
+  <input type="file" id="file" accept="image/*">
+  <label for="cam" class="btn primary" id="camBtn">צילום</label>
+  <label for="file" class="btn secondary" id="pickBtn">בחירה מהגלריה</label>
+
+  <div class="row">
+    <label for="zoom">הגדלה</label>
+    <input type="range" id="zoom" min="1" max="4" step="0.01" value="1">
+  </div>
+
+  <button type="button" class="btn secondary" id="saveBtn">שמירת התמונה</button>
+  <button type="button" class="btn secondary" id="shareBtn" hidden>שיתוף בוואטסאפ</button>
+  <button type="button" class="btn ghost" id="resetBtn" hidden>מחיקת התמונה והתחלה מחדש</button>
+  <p class="msg" id="msg" role="status"></p>
+
+  <div class="fallback" id="fallback" hidden>
+    <p class="hint">לחיצה ארוכה על התמונה ואז "שמירה".</p>
+    <img id="outImg" alt="התמונה המוכנה">
+  </div>
+
+</div>
+
+<script>
+(function(){
+  var S = 1080, CX = 540, CY = 540, R = 500, BAND_Y = 760;
+  var cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+  var zoomEl = document.getElementById('zoom');
+  var img = null, scale = 1, ox = 0, oy = 0;
+  var msg = document.getElementById('msg');
+
+  var TXT = {t1:'גם אני', t2:'איזנקוף', n1:'דרך', n2:'ישר! עם איזנקוט\nנגד גזענות\nמאחדים את ישראל'};
+  function val(id){ return TXT[id]; }
+
+  function drawPlaceholder(){
+    var g = ctx.createLinearGradient(0, 40, 0, BAND_Y);
+    g.addColorStop(0, '#c9b296'); g.addColorStop(1, '#a88a6a');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, S, S);
+    ctx.fillStyle = 'rgba(255,255,255,.55)';
+    ctx.beginPath(); ctx.arc(430, 360, 120, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(430, 760, 260, 250, 0, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.9)';
+    ctx.font = '700 44px Rubik, Arial, sans-serif';
+    ctx.textAlign = 'center'; ctx.direction = 'rtl';
+    ctx.fillText('כאן תופיע התמונה', 430, 200);
+  }
+
+  function drawPhoto(){
+    var base = Math.max((2*R)/img.width, (2*R)/img.height) * scale;
+    var w = img.width*base, h = img.height*base;
+    ctx.drawImage(img, CX - w/2 + ox, CY - h/2 + oy, w, h);
+  }
+
+  function drawNote(){
+    ctx.save();
+    ctx.translate(855, 580);
+    ctx.rotate(9 * Math.PI/180);
+    var W = 280, H = 370;
+    ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 18; ctx.shadowOffsetX = -6; ctx.shadowOffsetY = 8;
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(-W/2, -H/2, W, H);
+    ctx.shadowColor = 'transparent';
+    ctx.fillStyle = '#111';
+    ctx.textAlign = 'center'; ctx.direction = 'rtl';
+    var big = val('n1');
+    var fs = 150; ctx.font = '900 ' + fs + 'px "Frank Ruhl Libre", "David", serif';
+    while (ctx.measureText(big).width > W - 30 && fs > 40){ fs -= 6; ctx.font = '900 ' + fs + 'px "Frank Ruhl Libre", "David", serif'; }
+    ctx.fillText(big, 0, -H/2 + 30 + fs*0.85);
+    var lines = val('n2').split('\n').filter(function(s){ return s.trim(); }).slice(0, 4);
+    var sf = 30; ctx.font = '900 ' + sf + 'px "Frank Ruhl Libre", "David", serif';
+    lines.forEach(function(l){ while (ctx.measureText(l).width > W - 24 && sf > 16){ sf -= 2; ctx.font = '900 ' + sf + 'px "Frank Ruhl Libre", "David", serif'; } });
+    var y = -H/2 + 60 + fs*0.85 + sf;
+    lines.forEach(function(l){ ctx.fillText(l, 0, y); y += sf*1.2; });
+    ctx.restore();
+  }
+
+  function drawBand(){
+    ctx.fillStyle = '#4aa3f5'; ctx.fillRect(0, BAND_Y - 14, S, 14);
+    var g = ctx.createLinearGradient(0, BAND_Y, 0, S);
+    g.addColorStop(0, '#1a5ae6'); g.addColorStop(1, '#0f44c9');
+    ctx.fillStyle = g; ctx.fillRect(0, BAND_Y, S, S - BAND_Y);
+
+    var a = val('t1'), b = val('t2');
+    var fs = 118; ctx.direction = 'rtl'; ctx.textAlign = 'right';
+    function setF(){ ctx.font = '900 ' + fs + 'px Rubik, Arial, sans-serif'; }
+    setF();
+    var gap = fs*0.28, wa, wb;
+    function measure(){ wa = a ? ctx.measureText(a).width : 0; wb = b ? ctx.measureText(b).width : 0; gap = (a && b) ? fs*0.28 : 0; }
+    measure();
+    while (wa + gap + wb > 600 && fs > 40){ fs -= 4; setF(); measure(); }
+    var total = wa + gap + wb, xr = CX + total/2, y = BAND_Y + 125;
+    ctx.shadowColor = 'rgba(0,0,0,.25)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 4;
+    ctx.fillStyle = '#ffffff'; if (a) ctx.fillText(a, xr, y);
+    ctx.fillStyle = '#6cc4ff'; if (b) ctx.fillText(b, xr - wa - gap, y);
+    ctx.shadowColor = 'transparent';
+    ctx.fillStyle = '#6cc4ff';
+    ctx.fillRect(CX - 240, y + 34, 480, 6);
+  }
+
+  function render(){
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.clearRect(0, 0, S, S);
+    ctx.fillStyle = '#1450e0'; ctx.fillRect(0, 0, S, S);
+    ctx.save();
+    ctx.beginPath(); ctx.arc(CX, CY, R, 0, Math.PI*2); ctx.clip();
+    if (img) drawPhoto(); else drawPlaceholder();
+    drawNote();
+    drawBand();
+    ctx.restore();
+    ctx.lineWidth = 10; ctx.strokeStyle = 'rgba(255,255,255,.18)';
+    ctx.beginPath(); ctx.arc(CX, CY, R + 5, 0, Math.PI*2); ctx.stroke();
+  }
+
+  // load photo
+  function onPick(e){
+    var f = e.target.files && e.target.files[0]; if (!f) return;
+    var url = URL.createObjectURL(f), im = new Image();
+    im.onload = function(){ img = im; document.getElementById('resetBtn').hidden = false; scale = 1; ox = 0; oy = 0; zoomEl.value = 1; document.getElementById('fallback').hidden = true; msg.textContent = ''; render(); };
+    im.onerror = function(){ msg.textContent = 'לא הצלחתי לפתוח את התמונה. נסו תמונה אחרת.'; };
+    im.src = url;
+    e.target.value = '';
+  }
+  document.getElementById('file').addEventListener('change', onPick);
+  document.getElementById('cam').addEventListener('change', onPick);
+
+  zoomEl.addEventListener('input', function(){ scale = parseFloat(zoomEl.value); render(); });
+  
+
+  // drag + pinch
+  var pts = new Map(), lastDist = 0;
+  function k(){ return S / cv.getBoundingClientRect().width; }
+  cv.addEventListener('pointerdown', function(e){ cv.setPointerCapture(e.pointerId); pts.set(e.pointerId, {x:e.clientX, y:e.clientY}); if (pts.size === 2) lastDist = dist(); });
+  cv.addEventListener('pointermove', function(e){
+    if (!pts.has(e.pointerId) || !img) return;
+    var p = pts.get(e.pointerId);
+    if (pts.size === 1){ ox += (e.clientX - p.x)*k(); oy += (e.clientY - p.y)*k(); }
+    pts.set(e.pointerId, {x:e.clientX, y:e.clientY});
+    if (pts.size === 2){ var d = dist(); if (lastDist){ scale = Math.min(4, Math.max(1, scale * d/lastDist)); zoomEl.value = scale; } lastDist = d; }
+    render();
+  });
+  function up(e){ pts.delete(e.pointerId); lastDist = 0; }
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+  function dist(){ var a = Array.from(pts.values()); return Math.hypot(a[0].x-a[1].x, a[0].y-a[1].y); }
+  cv.addEventListener('wheel', function(e){ if (!img) return; e.preventDefault(); scale = Math.min(4, Math.max(1, scale * (e.deltaY < 0 ? 1.06 : 0.94))); zoomEl.value = scale; render(); }, {passive:false});
+
+  // save
+  var downloads = null, inClaude = false;
+  if (window.claude && window.claude.use){ inClaude = true; window.claude.use('downloads').then(function(d){ downloads = d; }).catch(function(){}); }
+  var FNAME = 'gam-ani-eizenkof.png';
+  function getBlob(cb){ render(); cv.toBlob(cb, 'image/png'); }
+  function canShareFiles(){
+    try { return !inClaude && navigator.canShare && navigator.canShare({files:[new File([new Blob(['x'])], 'a.png', {type:'image/png'})]}); } catch(e){ return false; }
+  }
+  if (canShareFiles()) document.getElementById('shareBtn').hidden = false;
+
+  document.getElementById('saveBtn').addEventListener('click', function(){
+    if (!img){ msg.textContent = 'קודם מצלמים או בוחרים תמונה.'; return; }
+    getBlob(function(blob){
+      if (downloads){
+        downloads.save({filename:FNAME, data:blob}).then(function(){ msg.textContent = 'התמונה נשמרה.'; })
+          .catch(function(err){ if (err && err.code === 'declined'){ msg.textContent = 'השמירה בוטלה.'; } else { showFallback(blob); } });
+      } else if (!inClaude){
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = FNAME;
+        document.body.appendChild(a); a.click(); a.remove();
+        msg.textContent = 'התמונה נשמרה בתיקיית ההורדות.';
+        showFallback(blob);
+      } else { showFallback(blob); }
+    });
+  });
+
+  document.getElementById('shareBtn').addEventListener('click', function(){
+    if (!img){ msg.textContent = 'קודם מצלמים או בוחרים תמונה.'; return; }
+    getBlob(function(blob){
+      var f = new File([blob], FNAME, {type:'image/png'});
+      navigator.share({files:[f]}).then(function(){ msg.textContent = ''; })
+        .catch(function(err){ if (!err || err.name !== 'AbortError') msg.textContent = 'השיתוף לא הצליח. אפשר לשמור את התמונה ולשלוח אותה ידנית.'; });
+    });
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', function(){
+    img = null; scale = 1; ox = 0; oy = 0; zoomEl.value = 1;
+    document.getElementById('fallback').hidden = true;
+    var o = document.getElementById('outImg'); o.removeAttribute('src');
+    document.getElementById('resetBtn').hidden = true;
+    msg.textContent = 'התמונה נמחקה. אפשר לצלם מחדש.';
+    render();
+  });
+
+  function showFallback(blob){
+    var o = document.getElementById('outImg'); o.src = URL.createObjectURL(blob);
+    document.getElementById('fallback').hidden = false; if (inClaude) msg.textContent = '';
+  }
+
+  render();
+  if (document.fonts){
+    Promise.all([document.fonts.load('900 100px Rubik'), document.fonts.load('900 100px "Frank Ruhl Libre"'), document.fonts.load('700 40px Rubik')])
+      .then(render, render);
+    document.fonts.ready.then(render);
+  }
+})();
+</script>
+
+</body>
+</html>
